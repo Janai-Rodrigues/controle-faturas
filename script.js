@@ -1,21 +1,86 @@
-        document.addEventListener('DOMContentLoaded', function () {
-            let suppliers = {};
+        // Importa as funções necessárias do Firebase SDK
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getFirestore, collection, doc, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, where } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
-            // Carrega prestadores do localStorage
-            const customSuppliers = JSON.parse(localStorage.getItem('customSuppliers')) || {};
-            for (const [key, supplier] of Object.entries(customSuppliers)) {
-                suppliers[key] = {
-                    ...supplier,
-                    data: JSON.parse(localStorage.getItem(`${key}Data`)) || []
-                };
+        // Variáveis globais para Firebase e Firestore
+        let db;
+        let auth;
+        let userId; // Manter userId, mesmo que não seja usado para dados públicos, pode ser útil para outras operações
+        let isAuthReady = false; // Flag para indicar se a autenticação está pronta
+        let suppliers = {}; // Objeto global para armazenar os dados dos prestadores
+
+        // Configuração do Firebase (usar a configuração que você forneceu anteriormente, garantindo projectId)
+        const firebaseConfig = {
+            apiKey: "AIzaSyBnlo7m5p3VuXnjRas1KUphkNbT-1hSYSk",
+            authDomain: "controle-faturas-874bf.firebaseapp.com",
+            projectId: "controle-faturas-874bf",
+            storageBucket: "controle-faturas-874bf.firebasestorage.app",
+            messagingSenderId: "497052992643",
+            appId: "1:497052992643:web:04db16f7886b212b6b87b6"
+        };
+
+        // Inicializa o Firebase e o Firestore quando o DOM estiver carregado
+        document.addEventListener('DOMContentLoaded', async function () {
+            // Inicializa o aplicativo Firebase
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            // Variável do ID do aplicativo fornecida pelo ambiente Canvas
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+            // Observa as mudanças no estado de autenticação
+            onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    userId = user.uid;
+                } else {
+                    try {
+                        // Preferir __initial_auth_token se disponível e válido
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token !== null) {
+                            await signInWithCustomToken(auth, __initial_auth_token);
+                            userId = auth.currentUser.uid;
+                            console.log("Autenticado com token personalizado.");
+                        } else {
+                            // Caso contrário, autenticar anonimamente
+                            await signInAnonymously(auth);
+                            userId = auth.currentUser.uid;
+                            console.log("Autenticado anonimamente.");
+                        }
+                    } catch (error) {
+                        console.error("Erro na autenticação:", error);
+                        // Se a autenticação falhar, usamos um ID temporário
+                        userId = crypto.randomUUID();
+                        console.warn("Falha na autenticação Firebase, usando ID de usuário temporário. Dados públicos continuarão a funcionar.");
+                    }
+                }
+                isAuthReady = true;
+                document.getElementById('user-id-display').textContent = `ID do Usuário: ${userId}`;
+                console.log("Autenticação pronta. ID do Usuário:", userId);
+
+                // Carrega os dados e inicializa a UI APENAS após a autenticação e carregamento de dados
+                await loadFirebaseData();
+                initUI(); // Chamada para a nova função de inicialização da UI
+            });
+
+            // Adicione um elemento para exibir o User ID na interface para fins de depuração
+            const header = document.querySelector('header');
+            let userIdDisplay = document.getElementById('user-id-display');
+            if (!userIdDisplay) {
+                userIdDisplay = document.createElement('p');
+                userIdDisplay.id = 'user-id-display';
+                userIdDisplay.style.fontSize = '0.8rem';
+                userIdDisplay.style.marginTop = '10px';
+                userIdDisplay.style.color = 'white';
+                header.appendChild(userIdDisplay);
             }
 
-            // Configura tema inicial
+            // Configura tema inicial (mantido no localStorage, pode ser migrado para Firestore também se quiser)
             const currentTheme = localStorage.getItem('theme') || 'light';
             document.body.classList.toggle('dark-mode', currentTheme === 'dark');
             document.querySelector('.theme-switcher').classList.toggle('dark', currentTheme === 'dark');
 
-            // Carrega cores personalizadas
+            // Carrega cores personalizadas (mantido no localStorage, pode ser migrado para Firestore também se quiser)
             const customColors = JSON.parse(localStorage.getItem('customColors')) || {};
             if (customColors.primary) {
                 document.documentElement.style.setProperty('--primary-color', customColors.primary);
@@ -45,351 +110,341 @@
                 { color: '#8e44ad', name: 'Roxo Escuro' }
             ];
 
-            // Inicializa a aplicação
-            initSuppliersButtons();
-            renderTables();
-            populateSupplierSelects();
-            initSupplierList();
-            setTimeout(updateScrollArrows, 100);
-
-            // Configura eventos
-            const settingsMenu = document.getElementById('settings-menu');
-            const settingsBtn = document.getElementById('settings-btn');
-            const supplierList = document.getElementById('supplier-list');
-            const listToggle = document.getElementById('list-toggle');
-
-            settingsBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                settingsMenu.classList.toggle('active');
-            });
-
-            document.getElementById('settings-menu-close').addEventListener('click', function () {
-                settingsMenu.classList.remove('active');
-            });
-
-            document.addEventListener('click', function (e) {
-                if (!supplierList.contains(e.target) && !listToggle.contains(e.target)) {
-                    supplierList.classList.remove('active');
-                }
-            });
-
-            document.querySelectorAll('.modal-overlay').forEach(modal => {
-                modal.addEventListener('click', function (e) {
-                    if (e.target === this) {
-                        this.classList.remove('active');
-                    }
-                    e.stopPropagation();
-                });
-            });
-
-            supplierList.addEventListener('click', function (e) {
-                e.stopPropagation();
-            });
-
-            // Alternar tema
-            document.querySelectorAll('.theme-option').forEach(option => {
-                option.addEventListener('click', function () {
-                    const theme = this.dataset.theme;
-                    document.body.classList.toggle('dark-mode', theme === 'dark');
-                    document.querySelector('.theme-switcher').classList.toggle('dark', theme === 'dark');
-                    localStorage.setItem('theme', theme);
-                });
-            });
-
-            // Abrir modal para adicionar prestador
-            document.getElementById('add-supplier-btn').addEventListener('click', function () {
-                document.getElementById('add-supplier-modal').classList.add('active');
-            });
-
-            document.getElementById('add-supplier-btn-top').addEventListener('click', function () {
-                document.getElementById('add-supplier-modal').classList.add('active');
-            });
-
-            // Abrir modal para remover prestador
-            document.getElementById('remove-supplier-btn').addEventListener('click', function () {
-                populateSupplierSelects();
-                document.getElementById('remove-supplier-modal').classList.add('active');
-            });
-
-            // Abrir modal para limpar dados
-            document.getElementById('clear-data-btn').addEventListener('click', function () {
-                const select = document.getElementById('supplier-to-clear');
-                select.innerHTML = '<option value="all">Todos os Prestadores</option>';
-
-                for (const [key, supplier] of Object.entries(suppliers)) {
-                    const option = document.createElement('option');
-                    option.value = key;
-                    option.textContent = supplier.name;
-                    select.appendChild(option);
-                }
-
-                document.getElementById('clear-data-modal').classList.add('active');
-            });
-
-            // Abrir modal para personalizar cores
-            document.getElementById('change-colors-btn').addEventListener('click', function () {
-                const primaryPicker = document.getElementById('primary-color-picker');
-                const secondaryPicker = document.getElementById('secondary-color-picker');
-                const dangerPicker = document.getElementById('danger-color-picker');
-
-                primaryPicker.value = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim();
-                secondaryPicker.value = getComputedStyle(document.documentElement).getPropertyValue('--secondary-color').trim();
-                dangerPicker.value = getComputedStyle(document.documentElement).getPropertyValue('--danger-color').trim();
-
-                document.getElementById('primary-color-rectangle').style.backgroundColor = primaryPicker.value;
-                document.getElementById('secondary-color-rectangle').style.backgroundColor = secondaryPicker.value;
-                document.getElementById('danger-color-rectangle').style.backgroundColor = dangerPicker.value;
-
-                ['primary', 'secondary', 'danger'].forEach(type => {
-                    const optionsContainer = document.getElementById(`${type}-color-options`);
-                    optionsContainer.innerHTML = '';
-                    colorOptions.forEach(opt => {
-                        const div = document.createElement('div');
-                        div.className = 'color-option';
-                        div.style.backgroundColor = opt.color;
-                        div.dataset.color = opt.color;
-                        div.title = opt.name;
-                        if (opt.color === document.getElementById(`${type}-color-picker`).value) {
-                            div.classList.add('selected');
-                        }
-                        div.addEventListener('click', function () {
-                            optionsContainer.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('selected'));
-                            this.classList.add('selected');
-                            document.getElementById(`${type}-color-picker`).value = this.dataset.color;
-                            document.getElementById(`${type}-color-rectangle`).style.backgroundColor = this.dataset.color;
-                        });
-                        optionsContainer.appendChild(div);
-                    });
-                });
-
-                document.getElementById('color-picker-modal').classList.add('active');
-            });
-
-            // Fechar modais
-            document.querySelectorAll('.close-modal').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    this.closest('.modal-overlay').classList.remove('active');
-                });
-            });
-
-            document.querySelectorAll('.btn-cancel').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    this.closest('.modal-overlay').classList.remove('active');
-                });
-            });
-
-            // Confirmar adição de prestador
-            document.getElementById('confirm-add-supplier').addEventListener('click', function () {
-                const name = document.getElementById('new-supplier-name').value.trim();
-                const color = document.getElementById('new-supplier-color').value;
-                const icon = document.getElementById('new-supplier-icon').value;
-
-                if (name) {
-                    const supplierKey = name.toLowerCase().replace(/\s+/g, '-');
-
-                    if (suppliers[supplierKey]) {
-                        showToast('Prestador já existe!', 'error');
-                        return;
-                    }
-
-                    suppliers[supplierKey] = {
-                        name: name,
-                        color: color,
-                        icon: icon,
-                        data: []
-                    };
-
-                    // Salva no localStorage
-                    const customSuppliersToSave = {};
-                    for (const [key, supplier] of Object.entries(suppliers)) {
-                        customSuppliersToSave[key] = {
-                            name: supplier.name,
-                            color: supplier.color,
-                            icon: supplier.icon
-                        };
-                    }
-                    localStorage.setItem('customSuppliers', JSON.stringify(customSuppliersToSave));
-
-                    // Atualiza a interface
-                    initSuppliersButtons();
-                    createSupplierForm(supplierKey);
-                    populateSupplierSelects();
-                    initSupplierList();
-                    updateScrollArrows();
-
-                    // Fecha o modal e limpa o formulário
-                    document.getElementById('add-supplier-modal').classList.remove('active');
-                    showToast(`Prestador "${name}" adicionado com sucesso!`, 'success');
-
-                    document.getElementById('add-supplier-form').reset();
-                    document.getElementById('new-supplier-color-rectangle').style.backgroundColor = '#3498db';
-                    document.getElementById('new-supplier-color').value = '#3498db';
-
-                    // Mostra o formulário do novo prestador
-                    showSupplierForm(supplierKey);
-                } else {
-                    showToast('Por favor, insira um nome para o prestador', 'error');
-                }
-            });
-
-            // Selecionar cor para novo prestador
-            document.querySelectorAll('#color-options .color-option').forEach(option => {
-                option.addEventListener('click', function () {
-                    const color = this.dataset.color;
-                    document.getElementById('new-supplier-color').value = color;
-                    document.getElementById('new-supplier-color-rectangle').style.backgroundColor = color;
-                });
-            });
-
-            // Confirmar remoção de prestador
-            document.getElementById('confirm-remove-supplier').addEventListener('click', function () {
-                const supplierKey = document.getElementById('supplier-to-remove').value;
-
-                if (supplierKey) {
-                    delete suppliers[supplierKey];
-
-                    // Atualiza localStorage
-                    const customSuppliersToSave = {};
-                    for (const [key, supplier] of Object.entries(suppliers)) {
-                        customSuppliersToSave[key] = {
-                            name: supplier.name,
-                            color: supplier.color,
-                            icon: supplier.icon
-                        };
-                    }
-                    localStorage.setItem('customSuppliers', JSON.stringify(customSuppliersToSave));
-                    localStorage.removeItem(`${supplierKey}Data`);
-
-                    // Remove elementos da interface
-                    document.querySelector(`.supplier-btn[data-supplier="${supplierKey}"]`)?.remove();
-                    document.getElementById(`${supplierKey}-form`)?.remove();
-
-                    // Atualiza a interface
-                    initSupplierList();
-                    populateSupplierSelects();
-                    updateScrollArrows();
-
-                    document.getElementById('remove-supplier-modal').classList.remove('active');
-                    showToast('Prestador removido com sucesso!', 'success');
-                } else {
-                    showToast('Por favor, selecione um prestador válido', 'error');
-                }
-            });
-
-            // Confirmar limpeza de dados
-            document.getElementById('confirm-clear-data').addEventListener('click', function () {
-                const supplierKey = document.getElementById('supplier-to-clear').value;
-
-                if (supplierKey === 'all') {
-                    // Limpa todos os dados
-                    for (const key in suppliers) {
-                        suppliers[key].data = [];
-                        localStorage.setItem(`${key}Data`, JSON.stringify([]));
-                    }
-                    showToast('Todos os dados foram limpos com sucesso!', 'success');
-                } else if (supplierKey) {
-                    // Limpa dados de um prestador específico
-                    suppliers[supplierKey].data = [];
-                    localStorage.setItem(`${supplierKey}Data`, JSON.stringify([]));
-                    showToast(`Dados de ${suppliers[supplierKey].name} limpos com sucesso!`, 'success');
-                }
-
-                // Atualiza as tabelas
+            // Funções de Inicialização da UI - Chamadas APENAS após o carregamento dos dados
+            function initUI() {
+                console.log("Inicializando interface do usuário...");
+                initSuppliersButtons();
                 renderTables();
-                document.getElementById('clear-data-modal').classList.remove('active');
-            });
-
-            // Salvar cores personalizadas
-            document.getElementById('save-colors').addEventListener('click', function () {
-                const primaryColor = document.getElementById('primary-color-picker').value;
-                const secondaryColor = document.getElementById('secondary-color-picker').value;
-                const dangerColor = document.getElementById('danger-color-picker').value;
-
-                // Aplica as novas cores
-                document.documentElement.style.setProperty('--primary-color', primaryColor);
-                document.documentElement.style.setProperty('--dark-primary-color', shadeColor(primaryColor, -20));
-                document.documentElement.style.setProperty('--secondary-color', secondaryColor);
-                document.documentElement.style.setProperty('--dark-secondary-color', shadeColor(secondaryColor, -20));
-                document.documentElement.style.setProperty('--danger-color', dangerColor);
-                document.documentElement.style.setProperty('--dark-danger-color', shadeColor(dangerColor, -20));
-
-                // Salva no localStorage
-                localStorage.setItem('customColors', JSON.stringify({
-                    primary: primaryColor,
-                    secondary: secondaryColor,
-                    danger: dangerColor
-                }));
-
-                document.getElementById('color-picker-modal').classList.remove('active');
-                showToast('Cores personalizadas salvas com sucesso!', 'success');
-            });
-
-            // Redefinir cores padrão
-            document.getElementById('reset-colors-btn').addEventListener('click', function () {
-                const defaultColors = {
-                    primary: '#3498db',
-                    secondary: '#2ecc71',
-                    danger: '#e74c3c'
-                };
-
-                document.getElementById('primary-color-picker').value = defaultColors.primary;
-                document.getElementById('secondary-color-picker').value = defaultColors.secondary;
-                document.getElementById('danger-color-picker').value = defaultColors.danger;
-
-                document.getElementById('primary-color-rectangle').style.backgroundColor = defaultColors.primary;
-                document.getElementById('secondary-color-rectangle').style.backgroundColor = defaultColors.secondary;
-                document.getElementById('danger-color-rectangle').style.backgroundColor = defaultColors.danger;
-
-                ['primary', 'secondary', 'danger'].forEach(type => {
-                    const optionsContainer = document.getElementById(`${type}-color-options`);
-                    optionsContainer.querySelectorAll('.color-option').forEach(opt => {
-                        opt.classList.toggle('selected', opt.dataset.color === defaultColors[type]);
-                    });
-                });
-            });
-
-            // Scroll suave na barra de prestadores
-            function smoothScroll(element, distance, duration) {
-                const start = element.scrollLeft;
-                const startTime = performance.now();
-
-                function animate(currentTime) {
-                    const elapsed = currentTime - startTime;
-                    const progress = Math.min(elapsed / duration, 1);
-                    const ease = progress * (2 - progress);
-
-                    element.scrollLeft = start + distance * ease;
-
-                    if (progress < 1) {
-                        requestAnimationFrame(animate);
-                    }
-                }
-
-                requestAnimationFrame(animate);
+                populateSupplierSelects();
+                initSupplierList();
+                setTimeout(updateScrollArrows, 100); // Pequeno atraso para garantir renderização completa
+                attachEventListeners(); // Chama uma função para anexar todos os event listeners
             }
 
-            // Eventos de scroll
-            document.getElementById('scroll-left').addEventListener('click', function () {
-                const scrollContainer = document.getElementById('suppliers-scroll');
-                smoothScroll(scrollContainer, -150, 600);
-            });
+            // Função para anexar todos os event listeners
+            function attachEventListeners() {
+                const settingsMenu = document.getElementById('settings-menu');
+                const settingsBtn = document.getElementById('settings-btn');
+                const supplierList = document.getElementById('supplier-list');
+                const listToggle = document.getElementById('list-toggle');
 
-            document.getElementById('scroll-right').addEventListener('click', function () {
-                const scrollContainer = document.getElementById('suppliers-scroll');
-                smoothScroll(scrollContainer, 150, 600);
-            });
+                settingsBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    settingsMenu.classList.toggle('active');
+                });
 
-            document.getElementById('suppliers-scroll').addEventListener('scroll', updateScrollArrows);
+                document.getElementById('settings-menu-close').addEventListener('click', function () {
+                    settingsMenu.classList.remove('active');
+                });
 
-            // Alternar lista de prestadores
-            document.getElementById('list-toggle').addEventListener('click', function (e) {
-                e.stopPropagation();
-                supplierList.classList.toggle('active');
-            });
+                document.addEventListener('click', function (e) {
+                    if (!supplierList.contains(e.target) && !listToggle.contains(e.target) && !settingsMenu.contains(e.target) && !settingsBtn.contains(e.target)) {
+                        supplierList.classList.remove('active');
+                        settingsMenu.classList.remove('active');
+                    }
+                });
 
-            document.getElementById('supplier-list-close').addEventListener('click', function () {
-                supplierList.classList.remove('active');
-            });
+                document.querySelectorAll('.modal-overlay').forEach(modal => {
+                    modal.addEventListener('click', function (e) {
+                        if (e.target === this) {
+                            this.closest('.modal-overlay').classList.remove('active');
+                        }
+                        e.stopPropagation();
+                    });
+                });
+
+                supplierList.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                });
+
+                // Alternar tema
+                document.querySelectorAll('.theme-option').forEach(option => {
+                    option.addEventListener('click', function () {
+                        const theme = this.dataset.theme;
+                        document.body.classList.toggle('dark-mode', theme === 'dark');
+                        document.querySelector('.theme-switcher').classList.toggle('dark', theme === 'dark');
+                        localStorage.setItem('theme', theme);
+                    });
+                });
+
+                // Abrir modal para adicionar prestador
+                document.getElementById('add-supplier-btn').addEventListener('click', function () {
+                    document.getElementById('add-supplier-modal').classList.add('active');
+                });
+
+                document.getElementById('add-supplier-btn-top').addEventListener('click', function () {
+                    document.getElementById('add-supplier-modal').classList.add('active');
+                });
+
+                // Abrir modal para remover prestador
+                document.getElementById('remove-supplier-btn').addEventListener('click', function () {
+                    populateSupplierSelects();
+                    document.getElementById('remove-supplier-modal').classList.add('active');
+                });
+
+                // Abrir modal para limpar dados
+                document.getElementById('clear-data-btn').addEventListener('click', function () {
+                    const select = document.getElementById('supplier-to-clear');
+                    select.innerHTML = '<option value="all">Todos os Prestadores</option>';
+
+                    for (const [key, supplier] of Object.entries(suppliers)) {
+                        const option = document.createElement('option');
+                        option.value = key;
+                        option.textContent = supplier.name;
+                        select.appendChild(option);
+                    }
+
+                    document.getElementById('clear-data-modal').classList.add('active');
+                });
+
+                // Abrir modal para personalizar cores
+                document.getElementById('change-colors-btn').addEventListener('click', function () {
+                    const primaryPicker = document.getElementById('primary-color-picker');
+                    const secondaryPicker = document.getElementById('secondary-color-picker');
+                    const dangerPicker = document.getElementById('danger-color-picker');
+
+                    primaryPicker.value = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim();
+                    secondaryPicker.value = getComputedStyle(document.documentElement).getPropertyValue('--secondary-color').trim();
+                    dangerPicker.value = getComputedStyle(document.documentElement).getPropertyValue('--danger-color').trim();
+
+                    document.getElementById('primary-color-rectangle').style.backgroundColor = primaryPicker.value;
+                    document.getElementById('secondary-color-rectangle').style.backgroundColor = secondaryPicker.value;
+                    document.getElementById('danger-color-rectangle').style.backgroundColor = dangerPicker.value;
+
+                    ['primary', 'secondary', 'danger'].forEach(type => {
+                        const optionsContainer = document.getElementById(`${type}-color-options`);
+                        optionsContainer.innerHTML = '';
+                        colorOptions.forEach(opt => {
+                            const div = document.createElement('div');
+                            div.className = 'color-option';
+                            div.style.backgroundColor = opt.color;
+                            div.dataset.color = opt.color;
+                            div.title = opt.name;
+                            if (opt.color === document.getElementById(`${type}-color-picker`).value) {
+                                div.classList.add('selected');
+                            }
+                            div.addEventListener('click', function () {
+                                optionsContainer.querySelectorAll('.color-option').forEach(opt => opt.classList.remove('selected'));
+                                this.classList.add('selected');
+                                document.getElementById(`${type}-color-picker`).value = this.dataset.color;
+                                document.getElementById(`${type}-color-rectangle`).style.backgroundColor = this.dataset.color;
+                            });
+                            optionsContainer.appendChild(div);
+                        });
+                    });
+
+                    document.getElementById('color-picker-modal').classList.add('active');
+                });
+
+                // Fechar modais
+                document.querySelectorAll('.close-modal').forEach(btn => {
+                    btn.addEventListener('click', function () {
+                        this.closest('.modal-overlay').classList.remove('active');
+                    });
+                });
+
+                document.querySelectorAll('.btn-cancel').forEach(btn => {
+                    btn.addEventListener('click', function () {
+                        this.closest('.modal-overlay').classList.remove('active');
+                    });
+                });
+
+                // Confirmar adição de prestador
+                document.getElementById('confirm-add-supplier').addEventListener('click', async function () {
+                    const name = document.getElementById('new-supplier-name').value.trim();
+                    const color = document.getElementById('new-supplier-color').value;
+                    const icon = document.getElementById('new-supplier-icon').value;
+
+                    if (name) {
+                        const supplierKey = name.toLowerCase().replace(/\s+/g, '-');
+
+                        if (suppliers[supplierKey]) {
+                            showToast('Prestador já existe!', 'error');
+                            return;
+                        }
+
+                        suppliers[supplierKey] = {
+                            name: name,
+                            color: color,
+                            icon: icon,
+                            data: []
+                        };
+
+                        // Salva no Firestore na coleção pública
+                        await saveSupplierToFirestore(supplierKey, { name, color, icon });
+
+                        // Atualiza a interface
+                        initSuppliersButtons();
+                        createSupplierForm(supplierKey);
+                        populateSupplierSelects();
+                        initSupplierList();
+                        updateScrollArrows();
+
+                        // Fecha o modal e limpa o formulário
+                        document.getElementById('add-supplier-modal').classList.remove('active');
+                        showToast(`Prestador "${name}" adicionado com sucesso!`, 'success');
+
+                        document.getElementById('add-supplier-form').reset();
+                        document.getElementById('new-supplier-color-rectangle').style.backgroundColor = '#3498db';
+                        document.getElementById('new-supplier-color').value = '#3498db';
+
+                        // Mostra o formulário do novo prestador
+                        showSupplierForm(supplierKey);
+                    } else {
+                        showToast('Por favor, insira um nome para o prestador', 'error');
+                    }
+                });
+
+                // Selecionar cor para novo prestador
+                document.querySelectorAll('#color-options .color-option').forEach(option => {
+                    option.addEventListener('click', function () {
+                        const color = this.dataset.color;
+                        document.getElementById('new-supplier-color').value = color;
+                        document.getElementById('new-supplier-color-rectangle').style.backgroundColor = color;
+                    });
+                });
+
+                // Confirmar remoção de prestador
+                document.getElementById('confirm-remove-supplier').addEventListener('click', async function () {
+                    const supplierKey = document.getElementById('supplier-to-remove').value;
+
+                    if (supplierKey) {
+                        await deleteSupplierFromFirestore(supplierKey); // Exclui do Firestore na coleção pública
+                        delete suppliers[supplierKey];
+
+                        // Remove elementos da interface
+                        document.querySelector(`.supplier-btn[data-supplier="${supplierKey}"]`)?.remove();
+                        document.getElementById(`${supplierKey}-form`)?.remove();
+
+                        // Atualiza a interface
+                        initSupplierList();
+                        initSuppliersButtons(); // Atualiza os botões de prestadores
+                        populateSupplierSelects();
+                        updateScrollArrows();
+
+                        document.getElementById('remove-supplier-modal').classList.remove('active');
+                        showToast('Prestador removido com sucesso!', 'success');
+                    } else {
+                        showToast('Por favor, selecione um prestador válido', 'error');
+                    }
+                });
+
+                // Confirmar limpeza de dados
+                document.getElementById('confirm-clear-data').addEventListener('click', async function () {
+                    const supplierKey = document.getElementById('supplier-to-clear').value;
+
+                    if (supplierKey === 'all') {
+                        // Limpa todos os dados na coleção pública
+                        for (const key in suppliers) {
+                            suppliers[key].data = [];
+                            await clearSupplierDataInFirestore(key);
+                        }
+                        showToast('Todos os dados foram limpos com sucesso!', 'success');
+                    } else if (supplierKey) {
+                        // Limpa dados de um prestador específico na coleção pública
+                        suppliers[supplierKey].data = [];
+                        await clearSupplierDataInFirestore(supplierKey);
+                        showToast(`Dados de ${suppliers[supplierKey].name} limpos com sucesso!`, 'success');
+                    }
+
+                    // Atualiza as tabelas
+                    renderTables();
+                    document.getElementById('clear-data-modal').classList.remove('active');
+                });
+
+                // Salvar cores personalizadas
+                document.getElementById('save-colors').addEventListener('click', async function () {
+                    const primaryColor = document.getElementById('primary-color-picker').value;
+                    const secondaryColor = document.getElementById('secondary-color-picker').value;
+                    const dangerColor = document.getElementById('danger-color-picker').value;
+
+                    // Aplica as novas cores
+                    document.documentElement.style.setProperty('--primary-color', primaryColor);
+                    document.documentElement.style.setProperty('--dark-primary-color', shadeColor(primaryColor, -20));
+                    document.documentElement.style.setProperty('--secondary-color', secondaryColor);
+                    document.documentElement.style.setProperty('--dark-secondary-color', shadeColor(secondaryColor, -20));
+                    document.documentElement.style.setProperty('--danger-color', dangerColor);
+                    document.documentElement.style.setProperty('--dark-danger-color', shadeColor(dangerColor, -20));
+
+                    // Salva no Firestore na coleção pública (assumindo que as cores são globais e públicas)
+                    await saveCustomColorsToFirestore({ primary: primaryColor, secondary: secondaryColor, danger: dangerColor });
+
+                    document.getElementById('color-picker-modal').classList.remove('active');
+                    showToast('Cores personalizadas salvas com sucesso!', 'success');
+                });
+
+                // Redefinir cores padrão
+                document.getElementById('reset-colors-btn').addEventListener('click', async function () {
+                    const defaultColors = {
+                        primary: '#3498db',
+                        secondary: '#2ecc71',
+                        danger: '#e74c3c'
+                    };
+
+                    document.getElementById('primary-color-picker').value = defaultColors.primary;
+                    document.getElementById('secondary-color-picker').value = defaultColors.secondary;
+                    document.getElementById('danger-color-picker').value = defaultColors.danger;
+
+                    document.getElementById('primary-color-rectangle').style.backgroundColor = defaultColors.primary;
+                    document.getElementById('secondary-color-rectangle').style.backgroundColor = defaultColors.secondary;
+                    document.getElementById('danger-color-rectangle').style.backgroundColor = defaultColors.danger;
+
+                    ['primary', 'secondary', 'danger'].forEach(type => {
+                        const optionsContainer = document.getElementById(`${type}-color-options`);
+                        optionsContainer.querySelectorAll('.color-option').forEach(opt => {
+                            opt.classList.toggle('selected', opt.dataset.color === defaultColors[type]);
+                        });
+                    });
+
+                    // Salva as cores padrão no Firestore na coleção pública
+                    await saveCustomColorsToFirestore(defaultColors);
+                    showToast('Cores redefinidas para o padrão!', 'success');
+                });
+
+                // Scroll suave na barra de prestadores
+                function smoothScroll(element, distance, duration) {
+                    const start = element.scrollLeft;
+                    const startTime = performance.now();
+
+                    function animate(currentTime) {
+                        const elapsed = currentTime - startTime;
+                        const progress = Math.min(elapsed / duration, 1);
+                        const ease = progress * (2 - progress);
+
+                        element.scrollLeft = start + distance * ease;
+
+                        if (progress < 1) {
+                            requestAnimationFrame(animate);
+                        }
+                    }
+
+                    requestAnimationFrame(animate);
+                }
+
+                // Eventos de scroll
+                document.getElementById('scroll-left').addEventListener('click', function () {
+                    const scrollContainer = document.getElementById('suppliers-scroll');
+                    smoothScroll(scrollContainer, -150, 600);
+                });
+
+                document.getElementById('scroll-right').addEventListener('click', function () {
+                    const scrollContainer = document.getElementById('suppliers-scroll');
+                    smoothScroll(scrollContainer, 150, 600);
+                });
+
+                document.getElementById('suppliers-scroll').addEventListener('scroll', updateScrollArrows);
+
+                // Alternar lista de prestadores
+                document.getElementById('list-toggle').addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    supplierList.classList.toggle('active');
+                });
+
+                document.getElementById('supplier-list-close').addEventListener('click', function () {
+                    supplierList.classList.remove('active');
+                });
+            }
+
 
             /* Funções auxiliares */
 
@@ -419,8 +474,10 @@
             function initSupplierList() {
                 const list = document.getElementById('supplier-list');
                 const header = list.querySelector('.supplier-list-header');
-                list.innerHTML = '';
-                list.appendChild(header);
+                // Limpa apenas os itens da lista, mantendo o cabeçalho
+                while (list.children.length > 1) { // Mantém o primeiro filho (header)
+                    list.removeChild(list.lastChild);
+                }
 
                 for (const [key, supplier] of Object.entries(suppliers)) {
                     const item = document.createElement('div');
@@ -564,7 +621,7 @@
 
                 // Filtro por Vencimento
                 const dueFilterGroup = document.createElement('div');
-                dueFilterGroup.className = 'filter-group';
+                dueFilterGroup.className = 'form-group';
                 dueFilterGroup.innerHTML = `
                     <label for="${supplierKey}-filter-due">Filtrar por Vencimento</label>
                     <input type="date" id="${supplierKey}-filter-due" autocomplete="off">
@@ -670,7 +727,7 @@
             }
 
             // Salva os dados do formulário
-            function saveData(supplier) {
+            async function saveData(supplier) {
                 const type = document.getElementById(`${supplier}-type`)?.value;
                 const invoice = document.getElementById(`${supplier}-invoice`)?.value.trim();
                 const due = document.getElementById(`${supplier}-due`)?.value;
@@ -678,22 +735,28 @@
                 const launched = document.getElementById(`${supplier}-launched`)?.checked;
 
                 if (type && invoice && due && release) {
-                    suppliers[supplier].data.push({
+                    const newItem = {
                         type,
                         invoice,
                         due,
                         release,
                         launched,
-                        id: Date.now()
-                    });
+                        timestamp: Date.now() // Use timestamp para ordenação
+                    };
 
-                    localStorage.setItem(`${supplier}Data`, JSON.stringify(suppliers[supplier].data));
+                    try {
+                        // Adiciona ao Firestore na coleção pública (caminho corrigido)
+                        const docRef = await addDoc(collection(db, `artifacts/${appId}/public/data/suppliers/${supplier}/data`), newItem);
+                        newItem.id = docRef.id; // Salva o ID do documento Firestore
+                        suppliers[supplier].data.push(newItem);
+                        renderTable(supplier);
+                        document.getElementById(`${supplier}Form`)?.reset();
+                        showToast('Lançamento salvo com sucesso!', 'success');
+                    } catch (error) {
+                        console.error("Erro ao salvar lançamento no Firestore:", error);
+                        showToast('Erro ao salvar lançamento!', 'error');
+                    }
 
-                    renderTable(supplier);
-
-                    document.getElementById(`${supplier}Form`)?.reset();
-
-                    showToast('Lançamento salvo com sucesso!', 'success');
                 } else {
                     showToast('Por favor, preencha todos os campos', 'error');
                 }
@@ -715,7 +778,10 @@
 
                 tableBody.innerHTML = '';
 
-                suppliers[supplier].data.forEach(item => {
+                // Ordena os dados por timestamp antes de renderizar
+                const sortedData = [...suppliers[supplier].data].sort((a, b) => b.timestamp - a.timestamp);
+
+                sortedData.forEach(item => {
                     const row = document.createElement('tr');
                     row.dataset.id = item.id;
 
@@ -756,8 +822,8 @@
                         showConfirmModal(
                             'Confirmar Exclusão',
                             'Tem certeza que deseja excluir este Registro?',
-                            () => {
-                                deleteEntry(supplier, this.dataset.id);
+                            async () => {
+                                await deleteEntry(supplier, this.dataset.id);
                             }
                         );
                     });
@@ -765,31 +831,39 @@
 
                 // Eventos para checkboxes de lançamento
                 document.querySelectorAll(`#${supplier}-table .launched-checkbox`).forEach(checkbox => {
-                    checkbox.addEventListener('change', function () {
-                        updateLaunchedStatus(supplier, this.dataset.id, this.checked);
+                    checkbox.addEventListener('change', async function () {
+                        await updateLaunchedStatus(supplier, this.dataset.id, this.checked);
                     });
                 });
             }
 
             // Atualiza o status de lançamento
-            function updateLaunchedStatus(supplier, id, launched) {
+            async function updateLaunchedStatus(supplier, id, launched) {
                 suppliers[supplier].data = suppliers[supplier].data.map(item => {
                     if (item.id == id) {
                         return { ...item, launched };
                     }
                     return item;
                 });
-                localStorage.setItem(`${supplier}Data`, JSON.stringify(suppliers[supplier].data));
 
-                // Atualiza o badge na tabela
-                const row = document.querySelector(`#${supplier}-table tr[data-id="${id}"]`);
-                if (row) {
-                    const badge = row.querySelector('.status-badge');
-                    badge.className = launched ? 'status-badge lancado' : 'status-badge pendente';
-                    badge.textContent = launched ? 'Lançado' : 'Pendente';
+                try {
+                    // Atualiza no Firestore na coleção pública (caminho corrigido)
+                    const docRef = doc(db, `artifacts/${appId}/public/data/suppliers/${supplier}/data`, id);
+                    await updateDoc(docRef, { launched });
+
+                    // Atualiza o badge na tabela
+                    const row = document.querySelector(`#${supplier}-table tr[data-id="${id}"]`);
+                    if (row) {
+                        const badge = row.querySelector('.status-badge');
+                        badge.className = launched ? 'status-badge lancado' : 'status-badge pendente';
+                        badge.textContent = launched ? 'Lançado' : 'Pendente';
+                    }
+
+                    showToast('Status de lançamento atualizado!', 'success');
+                } catch (error) {
+                    console.error("Erro ao atualizar status no Firestore:", error);
+                    showToast('Erro ao atualizar status!', 'error');
                 }
-
-                showToast('Status de lançamento atualizado!', 'success');
             }
 
             // Filtra a tabela
@@ -802,21 +876,18 @@
                 const rows = document.querySelectorAll(`#${supplier}-table tbody tr`);
 
                 rows.forEach(row => {
-                    const launched = row.cells[0].querySelector('input').checked.toString();
-                    const status = row.cells[1].textContent.toLowerCase();
-                    const type = row.cells[2].textContent;
-                    const invoice = row.cells[3].textContent.toLowerCase();
-                    const due = row.cells[4].textContent;
-                    const dueDate = new Date(due.split('/').reverse().join('-'));
-                    const filterDate = dueFilter ? new Date(dueFilter) : null;
+                    const itemId = row.dataset.id;
+                    const item = suppliers[supplier].data.find(d => d.id === itemId);
 
-                    const typeMatch = typeFilter === '' || type === typeFilter;
-                    const invoiceMatch = invoice.includes(invoiceFilter);
-                    const dueMatch = !filterDate ||
-                        (dueDate.getDate() === filterDate.getDate() &&
-                            dueDate.getMonth() === filterDate.getMonth() &&
-                            dueDate.getFullYear() === filterDate.getFullYear());
-                    const launchedMatch = launchedFilter === '' || launched === launchedFilter;
+                    if (!item) {
+                        row.style.display = 'none';
+                        return;
+                    }
+
+                    const typeMatch = typeFilter === '' || item.type === typeFilter;
+                    const invoiceMatch = item.invoice.toLowerCase().includes(invoiceFilter);
+                    const dueMatch = !dueFilter || item.due === dueFilter;
+                    const launchedMatch = launchedFilter === '' || String(item.launched) === launchedFilter;
 
                     row.style.display = typeMatch && invoiceMatch && dueMatch && launchedMatch ? '' : 'none';
                 });
@@ -836,11 +907,18 @@
             }
 
             // Exclui um lançamento
-            function deleteEntry(supplier, id) {
+            async function deleteEntry(supplier, id) {
                 suppliers[supplier].data = suppliers[supplier].data.filter(item => item.id != id);
-                localStorage.setItem(`${supplier}Data`, JSON.stringify(suppliers[supplier].data));
-                renderTable(supplier);
-                showToast('Lançamento excluído com sucesso!', 'success');
+
+                try {
+                    // Exclui do Firestore na coleção pública (caminho corrigido)
+                    await deleteDoc(doc(db, `artifacts/${appId}/public/data/suppliers/${supplier}/data`, id));
+                    renderTable(supplier);
+                    showToast('Lançamento excluído com sucesso!', 'success');
+                } catch (error) {
+                    console.error("Erro ao excluir lançamento do Firestore:", error);
+                    showToast('Erro ao excluir lançamento!', 'error');
+                }
             }
 
             // Mostra notificação toast
@@ -959,5 +1037,136 @@
                 const BB = ((B.toString(16).length == 1) ? "0" + B.toString(16) : B.toString(16));
 
                 return "#" + RR + GG + BB;
+            }
+
+            /* Funções do Firebase Firestore */
+
+            // Carrega todos os dados do Firestore
+            async function loadFirebaseData() {
+                if (!isAuthReady) {
+                    console.warn("Autenticação não está pronta. Não é possível carregar dados do Firebase.");
+                    return;
+                }
+                console.log("Carregando dados do Firebase da coleção pública...");
+                try {
+                    // Carrega informações dos prestadores (nome, cor, ícone) da coleção pública (caminho corrigido)
+                    const suppliersCollectionRef = collection(db, `artifacts/${appId}/public/data/suppliers`);
+                    const supplierSnapshot = await getDocs(suppliersCollectionRef);
+                    suppliers = {}; // Limpa os prestadores existentes antes de carregar
+                    for (const docSnapshot of supplierSnapshot.docs) {
+                        const supplierKey = docSnapshot.id;
+                        const supplierData = docSnapshot.data();
+                        suppliers[supplierKey] = {
+                            name: supplierData.name,
+                            color: supplierData.color,
+                            icon: supplierData.icon,
+                            data: [] // Inicializa com array vazio, os dados de lançamento serão carregados separadamente
+                        };
+
+                        // Carrega os dados de lançamento para cada prestador da coleção pública (caminho corrigido)
+                        const dataCollectionRef = collection(db, `artifacts/${appId}/public/data/suppliers/${supplierKey}/data`);
+                        const dataSnapshot = await getDocs(dataCollectionRef);
+                        dataSnapshot.forEach(dataDoc => {
+                            suppliers[supplierKey].data.push({
+                                id: dataDoc.id,
+                                ...dataDoc.data()
+                            });
+                        });
+                    }
+
+                    // Carrega cores personalizadas do Firestore da coleção pública (caminho corrigido)
+                    const customColorsDocRef = doc(db, `artifacts/${appId}/public/data/customColors`, 'appColors');
+                    const customColorsDoc = await getDoc(customColorsDocRef);
+                    if (customColorsDoc.exists()) {
+                        const customColors = customColorsDoc.data();
+                        document.documentElement.style.setProperty('--primary-color', customColors.primary);
+                        document.documentElement.style.setProperty('--dark-primary-color', shadeColor(customColors.primary, -20));
+                        document.documentElement.style.setProperty('--secondary-color', customColors.secondary);
+                        document.documentElement.style.setProperty('--dark-secondary-color', shadeColor(customColors.secondary, -20));
+                        document.documentElement.style.setProperty('--danger-color', customColors.danger);
+                        document.documentElement.style.setProperty('--dark-danger-color', shadeColor(customColors.danger, -20));
+                    }
+                    console.log("Dados do Firebase carregados com sucesso da coleção pública!");
+                } catch (error) {
+                    console.error("Erro ao carregar dados do Firebase da coleção pública:", error);
+                    showToast('Erro ao carregar dados do Firebase. Verifique as regras de segurança do Firestore.', 'error');
+                }
+            }
+
+            // Salva um novo prestador no Firestore na coleção pública (caminho corrigido)
+            async function saveSupplierToFirestore(supplierKey, supplierData) {
+                if (!isAuthReady) {
+                    showToast('Autenticação não está pronta. Tente novamente em breve.', 'error');
+                    return;
+                }
+                try {
+                    await setDoc(doc(db, `artifacts/${appId}/public/data/suppliers`, supplierKey), supplierData);
+                    console.log(`Prestador ${supplierKey} salvo no Firestore na coleção pública.`);
+                } catch (error) {
+                    console.error("Erro ao salvar prestador no Firestore:", error);
+                    showToast('Erro ao salvar prestador.', 'error');
+                }
+            }
+
+            // Exclui um prestador do Firestore e seus dados da coleção pública (caminho corrigido)
+            async function deleteSupplierFromFirestore(supplierKey) {
+                if (!isAuthReady) {
+                    showToast('Autenticação não está pronta. Tente novamente em breve.', 'error');
+                    return;
+                }
+                try {
+                    // Exclui a coleção de dados do prestador da coleção pública
+                    const dataCollectionRef = collection(db, `artifacts/${appId}/public/data/suppliers/${supplierKey}/data`);
+                    const dataSnapshot = await getDocs(dataCollectionRef);
+                    const batch = db.batch(); // Usa batch para exclusão em massa
+                    dataSnapshot.docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+
+                    // Exclui o documento do prestador da coleção pública (caminho corrigido)
+                    await deleteDoc(doc(db, `artifacts/${appId}/public/data/suppliers`, supplierKey));
+                    console.log(`Prestador ${supplierKey} e seus dados excluídos do Firestore na coleção pública.`);
+                } catch (error) {
+                    console.error("Erro ao excluir prestador do Firestore:", error);
+                    showToast('Erro ao excluir prestador.', 'error');
+                }
+            }
+
+            // Limpa todos os dados de lançamento de um prestador no Firestore na coleção pública (caminho corrigido)
+            async function clearSupplierDataInFirestore(supplierKey) {
+                if (!isAuthReady) {
+                    showToast('Autenticação não está pronta. Tente novamente em breve.', 'error');
+                    return;
+                }
+                try {
+                    const dataCollectionRef = collection(db, `artifacts/${appId}/public/data/suppliers/${supplierKey}/data`);
+                    const dataSnapshot = await getDocs(dataCollectionRef);
+                    const batch = db.batch();
+                    dataSnapshot.docs.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                    console.log(`Dados de lançamento de ${supplierKey} limpos no Firestore na coleção pública.`);
+                } catch (error) {
+                    console.error("Erro ao limpar dados do prestador no Firestore:", error);
+                    showToast('Erro ao limpar dados do prestador.', 'error');
+                }
+            }
+
+            // Salva cores personalizadas no Firestore na coleção pública (caminho corrigido)
+            async function saveCustomColorsToFirestore(colors) {
+                if (!isAuthReady) {
+                    showToast('Autenticação não está pronta. Tente novamente em breve.', 'error');
+                    return;
+                }
+                try {
+                    // Salva as cores no documento 'appColors' dentro da coleção 'customColors' na coleção pública (caminho corrigido)
+                    await setDoc(doc(db, `artifacts/${appId}/public/data/customColors`, 'appColors'), colors);
+                    console.log("Cores personalizadas salvas no Firestore na coleção pública.");
+                } catch (error) {
+                    console.error("Erro ao salvar cores personalizadas no Firestore:", error);
+                    showToast('Erro ao salvar cores personalizadas.', 'error');
+                }
             }
         });
