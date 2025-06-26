@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Lançamentos</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="shortcut icon" href="imagens/favicon.ico" type="image/x-icon">
+</head>
+
+<body>
+    <!-- Cabeçalho -->
+    <header>
+        <h1>Controle de Lançamentos</h1>
+        <p>Gerencie suas faturas de prestadores de forma eficiente</p>
+
+        <button id="settings-btn" class="settings-btn">
+            <i class="fas fa-cog"></i>
+            <span class="tooltip">Configurações</span>
+        </button>
+
+        <div id="settings-menu" class="settings-menu">
+            <div class="settings-menu-header">
+                <button id="settings-menu-close" class="settings-menu-close">×</button>
+            </div>
+            <div class="settings-group">
+                <div class="settings-group-title">Tema</div>
+                <div class="theme-switcher">
+                    <div class="theme-option light-option" data-theme="light">
+                        <i class="fas fa-sun"></i> Claro
+                    </div>
+                    <div class="theme-option dark-option" data-theme="dark">
+                        <i class="fas fa-moon"></i> Escuro
+                    </div>
+                    <div class="theme-slider"></div>
+                </div>
+            </div>
+
+            <div class="settings-group">
+                <div class="settings-group-title">Configurações</div>
+                <div class="settings-item" id="add-supplier-btn">
+                    <i class="fas fa-truck"></i> Adicionar Prestador
+                </div>
+                <div class="settings-item" id="remove-supplier-btn">
+                    <i class="fas fa-trash-alt"></i> Remover Prestador
+                </div>
+                <div class="settings-item" id="clear-data-btn">
+                    <i class="fas fa-trash"></i> Limpar Todos os Dados
+                </div>
+            </div>
+
+            <div class="settings-group">
+                <div class="settings-group-title">Aparência</div>
+                <div class="settings-item" id="change-colors-btn">
+                    <i class="fas fa-palette"></i> Personalizar Cores
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Barra de Prestadores -->
+        <div class="suppliers-container" id="suppliers-container">
+            <button class="list-toggle" id="list-toggle">
+                <i class="fas fa-list"></i>
+                <span class="tooltip">Lista de Empresas</span>
+            </button>
+            <button class="add-supplier-btn" id="add-supplier-btn-top">
+                <i class="fas fa-plus"></i>
+                <span class="tooltip">Adicionar Prestador</span>
+            </button>
+            <div class="supplier-list" id="supplier-list">
+                <div class="supplier-list-header">
+                    <h3>Empresas</h3>
+                    <button id="supplier-list-close" class="supplier-list-close">×</button>
+                </div>
+            </div>
+            <button class="scroll-arrow left" id="scroll-left">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <div class="suppliers-scroll" id="suppliers-scroll">
+                <!-- Botões dos prestadores serão adicionados aqui dinamicamente -->
+            </div>
+            <button class="scroll-arrow right" id="scroll-right">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Formulários serão adicionados dinamicamente aqui -->
+
+    <!-- Modal para Adicionar Prestador -->
+    <div id="add-supplier-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Adicionar Novo Prestador</h3>
+                <button class="close-modal">×</button>
+            </div>
+            <div class="modal-body">
+                <form id="add-supplier-form" autocomplete="off">
+                    <div class="form-group">
+                        <label for="new-supplier-name">Nome do Prestador</label>
+                        <input type="text" id="new-supplier-name" required autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="new-supplier-icon">Ícone</label>
+                        <select id="new-supplier-icon" required>
+                            <option value="fa-truck">Caminhão</option>
+                            <option value="fa-shipping-fast">Envio Rápido</option>
+                            <option value="fa-box">Caixa</option>
+                            <option value="fa-warehouse">Armazém</option>
+                            <option value="fa-truck-loading">Caminhão Carregando</option>
+                            <option value="fa-dolly">Carrinho</option>
+                            <option value="fa-pallet">Palete</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Cor do Botão</label>
+                        <div class="color-picker-rectangle" id="new-supplier-color-rectangle" style="background-color: #3498db;"></div>
+                        <input type="hidden" id="new-supplier-color" value="#3498db">
+                        <div class="color-options" id="color-options">
+                            <div class="color-option" style="background-color: #3498db;" data-color="#3498db"></div>
+                            <div class="color-option" style="background-color: #2ecc71;" data-color="#2ecc71"></div>
+                            <div class="color-option" style="background-color: #e74c3c;" data-color="#e74c3c"></div>
+                            <div class="color-option" style="background-color: #f39c12;" data-color="#f39c12"></div>
+                            <div class="color-option" style="background-color: #9b59b6;" data-color="#9b59b6"></div>
+                            <div class="color-option" style="background-color: #1abc9c;" data-color="#1abc9c"></div>
+                            <div class="color-option" style="background-color: #34495e;" data-color="#34495e"></div>
+                            <div class="color-option" style="background-color: #e67e22;" data-color="#e67e22"></div>
+                            <div class="color-option" style="background-color: #16a085;" data-color="#16a085"></div>
+                            <div class="color-option" style="background-color: #d35400;" data-color="#d35400"></div>
+                            <div class="color-option" style="background-color: #8e44ad;" data-color="#8e44ad"></div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-add-supplier" class="btn btn-cancel">Cancelar</button>
+                <button id="confirm-add-supplier" class="btn btn-secondary">Adicionar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Remover Prestador -->
+    <div id="remove-supplier-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Remover Prestador</h3>
+                <button class="close-modal">×</button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja remover este prestador? Todos os dados associados serão perdidos.</p>
+                <div class="form-group">
+                    <label for="supplier-to-remove">Selecione o prestador</label>
+                    <select id="supplier-to-remove" required>
+                        <option value="">Selecione...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-remove-supplier" class="btn btn-cancel">Cancelar</button>
+                <button id="confirm-remove-supplier" class="btn btn-secondary">Remover</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Limpar Dados -->
+    <div id="clear-data-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Limpar Todos os Dados</h3>
+                <button class="close-modal">×</button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza que deseja limpar todos os dados? Esta ação não pode ser desfeita.</p>
+                <div class="form-group">
+                    <label for="supplier-to-clear">Selecione o prestador para limpar</label>
+                    <select id="supplier-to-clear" required>
+                        <option value="all">Todos os Prestadores</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-clear-data" class="btn btn-cancel">Cancelar</button>
+                <button id="confirm-clear-data" class="btn btn-secondary">Limpar Dados</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Personalizar Cores -->
+    <div id="color-picker-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Personalizar Cores</h3>
+                <button class="close-modal">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Cor Primária</label>
+                    <div class="color-picker-rectangle" id="primary-color-rectangle" style="background-color: #3498db;"></div>
+                    <input type="hidden" id="primary-color-picker" value="#3498db">
+                    <div class="color-options" id="primary-color-options"></div>
+                </div>
+                <div class="form-group">
+                    <label>Cor Secundária</label>
+                    <div class="color-picker-rectangle" id="secondary-color-rectangle" style="background-color: #2ecc71;"></div>
+                    <input type="hidden" id="secondary-color-picker" value="#2ecc71">
+                    <div class="color-options" id="secondary-color-options"></div>
+                </div>
+                <div class="form-group">
+                    <label>Cor de Perigo</label>
+                    <div class="color-picker-rectangle" id="danger-color-rectangle" style="background-color: #e74c3c;"></div>
+                    <input type="hidden" id="danger-color-picker" value="#e74c3c">
+                    <div class="color-options" id="danger-color-options"></div>
+                </div>
+            </div>
+            <div class="color-picker-footer">
+                <button id="reset-colors-btn" class="btn btn-secondary">
+                    <i class="fas fa-undo"></i> Redefinir Cores
+                </button>
+                <button id="cancel-color-picker" class="btn btn-cancel">Cancelar</button>
+                <button id="save-colors" class="btn btn-secondary">Salvar Cores</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast de Notificação -->
+    <div id="toast" class="toast"></div>
+    <script src="script.js"></script>
+</body>
+</html>
