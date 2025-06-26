@@ -303,9 +303,9 @@
             position: absolute;
             top: 50%;
             transform: translateY(-50%);
-            background-color: rgba(0, 0, 0, 0.7);
+            background-color: rgb(3, 153, 116);
             color: white;
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            border: none;
             width: 40px;
             height: 40px;
             border-radius: 50%;
@@ -318,16 +318,45 @@
             font-size: 1.2rem;
         }
 
+        #new-supplier-color {
+            width: 50px;
+            /* Igualado para formar um círculo */
+            height: 40px;
+            /* Igualado para formar um círculo */
+            padding: 0;
+            /* Removido para evitar distorção no formato circular */
+            border: none;
+            /* Sem bordas */
+            border-radius: 5%;
+            /* Torna o elemento completamente redondo */
+            margin-bottom: 10px;
+        }
+
         .scroll-arrow:hover {
-            background-color: rgba(0, 0, 0, 0.9);
+            background-color: rgba(0, 255, 179, 0.9);
         }
 
         .scroll-arrow.left {
-            left: 15px;
+            left: 60px;
+            /* Aumentado de 15px para 60px */
         }
 
         .scroll-arrow.right {
-            right: 15px;
+            right: 60px;
+            /* Aumentado de 15px para 60px */
+        }
+
+        /* Adicione também uma regra para telas menores: */
+        @media (max-width: 768px) {
+            .scroll-arrow.left {
+                left: 50px;
+                /* Ajuste para telas menores */
+            }
+
+            .scroll-arrow.right {
+                right: 50px;
+                /* Ajuste para telas menores */
+            }
         }
 
         .list-toggle {
@@ -699,9 +728,9 @@
         }
 
         .color-option {
-            width: 40px;
-            height: 40px;
-            border-radius: 5px;
+            width: 37px;
+            height: 37px;
+            border-radius: 100px;
             cursor: pointer;
             border: 2px solid transparent;
             transition: var(--transition);
@@ -748,12 +777,12 @@
         }
 
         .btn-danger {
-            background-color: var(--danger-color);
+            background-color: #c71111;
             color: white;
         }
 
         .btn-danger:hover {
-            background-color: var(--dark-danger-color);
+            background-color: #eb0101;
         }
 
         .btn-warning {
@@ -762,12 +791,12 @@
         }
 
         .btn-cancel {
-            background-color: var(--danger-color);
+            background-color: #da5103;
             color: white;
         }
 
         .btn-cancel:hover {
-            background-color: var(--dark-danger-color);
+            background-color: #ff5100;
         }
 
         /* Tabela - Estilos ajustados */
@@ -789,7 +818,8 @@
             margin-top: 20px;
         }
 
-        th, td {
+        th,
+        td {
             padding: 12px 15px;
             text-align: center;
             border-bottom: 1px solid var(--border-color);
@@ -978,6 +1008,7 @@
                 opacity: 0;
                 transform: translateY(-50px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -1060,6 +1091,7 @@
             from {
                 background-color: rgba(255, 255, 0, 0.3);
             }
+
             to {
                 background-color: transparent;
             }
@@ -1070,6 +1102,7 @@
                 opacity: 0;
                 transform: translateY(-20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -1081,6 +1114,7 @@
                 opacity: 0;
                 transform: translateY(20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -1089,6 +1123,7 @@
 
         /* Responsividade */
         @media (max-width: 768px) {
+
             .form-row,
             .filter-container {
                 flex-direction: column;
@@ -1158,4 +1193,9 @@
 
         .dark-mode .tooltip::after {
             border-color: var(--light-color) transparent transparent;
+        }
+
+        .btn.btn-secondary {
+            padding: 5px 10px;
+            font-size: 0.8rem;
         }
